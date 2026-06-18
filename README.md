@@ -1,5 +1,7 @@
 # ADNS-3080 Optical Flow Sensor
 
+<img width="350" height="350" alt="image" src="https://github.com/user-attachments/assets/7d981546-2c7e-4cba-9180-192404946c97" />
+
 ---
 
 ## Mục lục
