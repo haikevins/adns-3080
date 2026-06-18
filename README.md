@@ -1,94 +1,279 @@
-| Biến       | Ý nghĩa                                              | Dùng để làm gì                           |
-| ---------- | ---------------------------------------------------- | ---------------------------------------- |
-| `dx`       | Độ dịch chuyển tức thời theo trục X từ lần đọc trước | Tính vận tốc/trôi ngang X                |
-| `dy`       | Độ dịch chuyển tức thời theo trục Y từ lần đọc trước | Tính vận tốc/trôi ngang Y                |
-| `flowX`    | Tổng cộng dồn của nhiều `dx`                         | Theo dõi vị trí tương đối X              |
-| `flowY`    | Tổng cộng dồn của nhiều `dy`                         | Theo dõi vị trí tương đối Y              |
-| `squal`    | Chất lượng bề mặt/ảnh mà sensor thấy                 | Kiểm tra sensor có bám mặt đất tốt không |
-| `shutter`  | Thời gian phơi sáng nội bộ của cảm biến              | Đánh giá ánh sáng/nền có đủ tốt không    |
-| `maxPixel` | Giá trị pixel sáng nhất trong frame                  | Đánh giá ảnh quá tối/quá sáng            |
-| `overflow` | Báo dữ liệu chuyển động bị tràn/mất                  | Nếu có thì bỏ sample đó                  |
+# ADNS-3080 Optical Flow Sensor – Giải thích dữ liệu đo
 
-dx, dy
+README này giải thích các biến thường gặp khi đọc dữ liệu từ cảm biến optical flow **ADNS-3080**, đặc biệt khi dùng cho drone để ước lượng vận tốc và giữ vị trí tương đối.
 
-dx và dy là dịch chuyển mới nhất mà ADNS-3080 đo được giữa hai lần đọc. Ví dụ:
+---
 
-dx = 5, dy = -2
+## Mục lục
 
-nghĩa là ảnh bề mặt đã dịch 5 count theo X và -2 count theo Y so với lần trước.
+- [Tổng quan các biến](#tổng-quan-các-biến)
+- [`dx`, `dy`](#dx-dy)
+- [`flowX`, `flowY`](#flowx-flowy)
+- [`squal`](#squal)
+- [`shutter`](#shutter)
+- [`maxPixel`](#maxpixel)
+- [`overflow`](#overflow)
+- [Gợi ý lọc dữ liệu cho drone](#gợi-ý-lọc-dữ-liệu-cho-drone)
+- [Ghi chú thực tế khi test](#ghi-chú-thực-tế-khi-test)
 
-Với drone, thường dùng dx/dy để ước lượng vận tốc:
+---
 
-velocityX ≈ dx / dt
-velocityY ≈ dy / dt
+## Tổng quan các biến
 
-Nhưng để ra vận tốc thật theo m/s, bạn còn cần độ cao. Bay càng cao thì cùng một dx tương ứng với quãng đường thật càng lớn.
+| Biến | Ý nghĩa | Dùng để làm gì |
+| --- | --- | --- |
+| `dx` | Độ dịch chuyển tức thời theo trục X từ lần đọc trước | Tính vận tốc hoặc độ trôi ngang theo trục X |
+| `dy` | Độ dịch chuyển tức thời theo trục Y từ lần đọc trước | Tính vận tốc hoặc độ trôi ngang theo trục Y |
+| `flowX` | Tổng cộng dồn của nhiều giá trị `dx` | Theo dõi vị trí tương đối theo trục X |
+| `flowY` | Tổng cộng dồn của nhiều giá trị `dy` | Theo dõi vị trí tương đối theo trục Y |
+| `squal` | Chất lượng bề mặt hoặc chất lượng ảnh mà sensor nhìn thấy | Kiểm tra sensor có bám mặt đất tốt không |
+| `shutter` | Thời gian phơi sáng nội bộ của cảm biến | Đánh giá ánh sáng hoặc nền có đủ tốt không |
+| `maxPixel` | Giá trị pixel sáng nhất trong frame | Đánh giá ảnh đang quá tối hay quá sáng |
+| `overflow` | Báo dữ liệu chuyển động bị tràn hoặc bị mất | Nếu có overflow thì nên bỏ sample đó |
 
-flowX, flowY
+---
 
-flowX và flowY không phải dữ liệu trực tiếp từ sensor. Đây là biến trong code của bạn:
+## `dx`, `dy`
+
+`dx` và `dy` là độ dịch chuyển mới nhất mà ADNS-3080 đo được giữa hai lần đọc dữ liệu.
+
+Ví dụ:
+
+```cpp
+dx = 5;
+dy = -2;
+```
+
+Nghĩa là ảnh bề mặt đã dịch:
+
+- `5 count` theo trục X
+- `-2 count` theo trục Y
+
+so với lần đọc trước đó.
+
+Với drone, `dx` và `dy` thường được dùng để ước lượng vận tốc ngang:
+
+```cpp
+velocityX ≈ dx / dt;
+velocityY ≈ dy / dt;
+```
+
+Trong đó:
+
+- `dx`, `dy`: độ dịch chuyển đo được từ sensor
+- `dt`: thời gian giữa hai lần đọc
+- `velocityX`, `velocityY`: vận tốc tương đối theo trục X/Y
+
+> Lưu ý: Để đổi sang vận tốc thật theo đơn vị `m/s`, cần biết thêm **độ cao bay**. Drone bay càng cao thì cùng một giá trị `dx` sẽ tương ứng với quãng đường thật càng lớn.
+
+---
+
+## `flowX`, `flowY`
+
+`flowX` và `flowY` không phải là dữ liệu trực tiếp từ sensor. Đây thường là biến được tạo trong code để cộng dồn nhiều lần đọc `dx` và `dy`.
+
+Ví dụ:
+
+```cpp
+flowX += dx;
+flowY += dy;
+```
+
+Nó biểu diễn tổng dịch chuyển tương đối kể từ lúc:
+
+- reset code,
+- clear motion,
+- hoặc bắt đầu quá trình đo.
+
+Ví dụ với `flowX`:
+
+| Lần đọc | `dx` | `flowX` |
+| --- | ---: | ---: |
+| 1 | `3` | `3` |
+| 2 | `4` | `7` |
+| 3 | `-2` | `5` |
+
+Với drone giữ vị trí, `flowX` và `flowY` có thể dùng như một dạng **vị trí tương đối tạm thời**. Tuy nhiên, trong điều khiển thực tế, `dx` và `dy` thường quan trọng hơn vì chúng giúp tạo tín hiệu **velocity hold**.
+
+---
+
+## `squal`
+
+`squal` là viết tắt của **Surface Quality**.
+
+Biến này cho biết số lượng đặc điểm hoặc texture hợp lệ mà sensor nhìn thấy trong frame hiện tại. Theo datasheet, số đặc điểm hợp lệ có thể xấp xỉ:
+
+```text
+features = squal * 4
+```
+
+Giá trị `squal` thấp thường cho thấy sensor đang gặp vấn đề như:
+
+- không nhìn thấy bề mặt rõ,
+- drone quá xa mặt đất,
+- sai khoảng cách focus,
+- thiếu sáng,
+- nền quá trơn,
+- hoặc bề mặt không đủ texture.
+
+Datasheet cũng cho biết `squal` thường cao nhất khi bề mặt nằm đúng khoảng cách focus tối ưu.
+
+Gợi ý dùng cho drone:
+
+```cpp
+if (squal < 15) {
+  // Không tin dữ liệu optical flow
+  // Có thể bỏ sample hoặc giảm trọng số dữ liệu
+}
+```
+
+Khi test tốt trên giấy, vải hoặc bề mặt có texture rõ, `squal` có thể nằm trong khoảng từ vài chục đến hơn `100`, tùy điều kiện bề mặt và ánh sáng.
+
+---
+
+## `shutter`
+
+`shutter` là thời gian phơi sáng nội bộ của cảm biến, tính theo clock cycles.
+
+ADNS-3080 tự điều chỉnh shutter để giữ độ sáng ảnh trong vùng phù hợp. Ở chế độ mặc định, shutter được điều chỉnh theo từng frame.
+
+Cách hiểu đơn giản:
+
+| Giá trị `shutter` | Ý nghĩa |
+| --- | --- |
+| Thấp | Ảnh đủ sáng, sensor không cần phơi sáng lâu |
+| Cao | Ảnh tối hoặc bề mặt khó nhìn, sensor phải phơi sáng lâu hơn |
+
+Với drone, nếu `shutter` tăng quá cao đồng thời `squal` thấp, dữ liệu optical flow thường kém tin cậy.
+
+---
+
+## `maxPixel`
+
+`maxPixel` là giá trị pixel sáng nhất trong ảnh mà sensor đang nhìn thấy.
+
+Biến này giúp đánh giá frame hiện tại đang:
+
+- quá tối,
+- đủ sáng,
+- hay quá sáng/chói.
+
+Cách hiểu thực tế:
+
+| Giá trị `maxPixel` | Ý nghĩa có thể xảy ra |
+| --- | --- |
+| Quá thấp | Ảnh tối, LED yếu, quá xa mặt đất hoặc sai focus |
+| Quá cao | Ảnh quá sáng, bị chói hoặc có thể bão hòa |
+| Vừa phải | Ảnh có khả năng tracking tốt hơn |
+
+Không nên đánh giá dữ liệu chỉ bằng `maxPixel`. Nên xem kết hợp với:
+
+- `squal`,
+- `shutter`,
+- và trạng thái `overflow`.
+
+---
+
+## `overflow`
+
+`overflow` cho biết sensor đã phát hiện chuyển động quá lớn hoặc dữ liệu delta đã bị tràn trước khi MCU kịp đọc.
+
+Trong code, bit `overflow` thường là bit `0x10` của thanh ghi `Motion`.
+
+Khi `overflow = 1`, không nên dùng `dx` và `dy` của sample đó cho điều khiển drone.
+
+Ví dụ:
+
+```cpp
+if (overflow) {
+  // Bỏ sample hiện tại
+  // Clear motion nếu cần
+  return;
+}
+```
+
+Lý do là khi overflow xảy ra, dữ liệu có khả năng đã bị mất một phần chuyển động thật.
+
+---
+
+## Gợi ý lọc dữ liệu cho drone
+
+Một cách đơn giản để kiểm tra dữ liệu optical flow trước khi sử dụng:
+
+```cpp
+bool isFlowValid(int squal, bool overflow) {
+  if (overflow) {
+    return false;
+  }
+
+  if (squal < 15) {
+    return false;
+  }
+
+  return true;
+}
+```
+
+Khi đọc sensor:
+
+```cpp
+if (!isFlowValid(squal, overflow)) {
+  // Không dùng dx/dy cho vòng điều khiển
+  // Có thể giữ giá trị cũ hoặc giảm độ tin cậy của optical flow
+  return;
+}
 
 flowX += dx;
 flowY += dy;
 
-Nó là tổng dịch chuyển tương đối từ lúc bạn clear motion hoặc reset code. Trong test serial, nó giúp bạn thấy sensor có đang cộng dồn đúng không.
+velocityX = dx / dt;
+velocityY = dy / dt;
+```
 
-Ví dụ:
+Nếu muốn dùng cho drone thực tế, nên kết hợp optical flow với các cảm biến khác như:
 
-Lần 1: dx = 3  -> flowX = 3
-Lần 2: dx = 4  -> flowX = 7
-Lần 3: dx = -2 -> flowX = 5
+- IMU,
+- cảm biến độ cao,
+- barometer,
+- sonar,
+- lidar,
+- hoặc ToF sensor.
 
-Với drone giữ vị trí, flowX/flowY có thể dùng như “vị trí tương đối tạm thời”, nhưng quan trọng hơn vẫn là dùng dx/dy để tạo velocity hold.
+---
 
-squal
+## Ghi chú thực tế khi test
 
-squal là Surface Quality. Nó đo số lượng đặc điểm/texture hợp lệ mà sensor nhìn thấy trong frame hiện tại. Datasheet nói số đặc điểm hợp lệ xấp xỉ bằng:
+Khi test ADNS-3080 trên Serial Monitor, nên quan sát cùng lúc các biến:
 
-features = squal * 4
+```text
+dx, dy, flowX, flowY, squal, shutter, maxPixel, overflow
+```
 
-Giá trị squal gần 0 thường nghĩa là không có bề mặt, quá xa, sai focus, thiếu sáng, hoặc nền quá trơn; datasheet cũng nói SQUAL thường cao nhất khi bề mặt ở đúng khoảng cách focus tối ưu.
+Một sample tốt thường có đặc điểm:
 
-Gợi ý dùng cho drone:
+- `overflow = 0`
+- `squal` đủ cao
+- `shutter` không tăng quá bất thường
+- `maxPixel` không quá thấp hoặc quá cao
+- `dx`, `dy` thay đổi hợp lý khi di chuyển sensor
 
-if (squal < 15) {
-  // Không tin dữ liệu flow
-}
+Nếu thấy `squal` thấp liên tục, nên kiểm tra:
 
-Khi test tốt trên giấy/vải, bạn có thể thấy squal khoảng vài chục đến hơn 100 tùy bề mặt và ánh sáng.
+- khoảng cách từ sensor đến mặt đất,
+- độ focus của lens,
+- ánh sáng LED,
+- bề mặt test có đủ texture hay không,
+- tốc độ di chuyển có quá nhanh hay không.
 
-shutter
+---
 
-shutter là thời gian phơi sáng nội bộ của cảm biến, tính theo clock cycles. ADNS-3080 tự điều chỉnh shutter để giữ độ sáng ảnh trong vùng bình thường. Datasheet nói shutter được điều chỉnh mỗi frame trong chế độ mặc định.
+## Tóm tắt nhanh
 
-Hiểu đơn giản:
-
-shutter thấp  -> ảnh đủ sáng, sensor không cần phơi lâu
-shutter cao   -> ảnh tối hoặc bề mặt khó nhìn, sensor phải phơi lâu hơn
-
-Với drone, nếu shutter tăng quá cao và squal thấp, dữ liệu flow dễ kém tin cậy.
-
-maxPixel
-
-maxPixel là giá trị pixel sáng nhất trong ảnh mà sensor đang thấy. Nó giúp đánh giá ảnh có bị tối/quá sáng không.
-
-Cách hiểu thực tế:
-
-maxPixel quá thấp  -> ảnh tối, LED yếu, quá xa mặt đất, sai focus
-maxPixel quá cao   -> ảnh quá sáng/chói, có thể bão hòa
-maxPixel vừa phải  -> ảnh có khả năng tracking tốt hơn
-
-Không nên chỉ dùng maxPixel một mình. Hãy xem cùng squal và shutter.
-
-overflow
-
-overflow nghĩa là sensor phát hiện chuyển động quá lớn hoặc dữ liệu delta bị tràn trước khi MCU đọc kịp. Trong code của bạn, bit này là 0x10 của thanh ghi Motion.
-
-Khi overflow = 1, không nên dùng dx/dy của sample đó cho điều khiển drone:
-
-if (overflow) {
-  // bỏ sample
-  // clear motion
-}
-
-Vì lúc này dữ liệu đã có khả năng mất một phần chuyển động.
+| Biến | Nên hiểu là |
+| --- | --- |
+| `dx`, `dy` | Dịch chuyển tức thời mới nhất |
+| `flowX`, `flowY` | Tổng dịch chuyển cộng dồn |
+| `squal` | Độ tin cậy về texture/bề mặt |
+| `shutter` | Sensor đang cần phơi sáng lâu hay ngắn |
+| `maxPixel` | Mức sáng cao nhất trong ảnh |
+| `overflow` | Dữ liệu đã bị tràn, nên bỏ sample |
