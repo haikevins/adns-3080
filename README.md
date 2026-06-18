@@ -8,3 +8,18 @@
 | `shutter`  | Thời gian phơi sáng nội bộ của cảm biến              | Đánh giá ánh sáng/nền có đủ tốt không    |
 | `maxPixel` | Giá trị pixel sáng nhất trong frame                  | Đánh giá ảnh quá tối/quá sáng            |
 | `overflow` | Báo dữ liệu chuyển động bị tràn/mất                  | Nếu có thì bỏ sample đó                  |
+
+dx, dy
+
+dx và dy là dịch chuyển mới nhất mà ADNS-3080 đo được giữa hai lần đọc. Ví dụ:
+
+dx = 5, dy = -2
+
+nghĩa là ảnh bề mặt đã dịch 5 count theo X và -2 count theo Y so với lần trước.
+
+Với drone, thường dùng dx/dy để ước lượng vận tốc:
+
+velocityX ≈ dx / dt
+velocityY ≈ dy / dt
+
+Nhưng để ra vận tốc thật theo m/s, bạn còn cần độ cao. Bay càng cao thì cùng một dx tương ứng với quãng đường thật càng lớn.
