@@ -1,6 +1,4 @@
-# ADNS-3080 Optical Flow Sensor – Giải thích dữ liệu đo
-
-README này giải thích các biến thường gặp khi đọc dữ liệu từ cảm biến optical flow **ADNS-3080**, đặc biệt khi dùng cho drone để ước lượng vận tốc và giữ vị trí tương đối.
+# ADNS-3080 Optical Flow Sensor
 
 ---
 
